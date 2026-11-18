@@ -124,6 +124,30 @@ class UtilTest extends TestCase
         $this->assertFalse($result);
     }
 
+    public function testIsAppBridgeEnabledDefaultsTrue(): void
+    {
+        $this->assertTrue(Util::isAppBridgeEnabled());
+    }
+
+    public function testIsAppBridgeEnabledCanBeDisabled(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+
+        $this->assertFalse(Util::isAppBridgeEnabled());
+    }
+
+    public function testIsShopifyEmbeddedDefaultsTrue(): void
+    {
+        $this->assertTrue(Util::isShopifyEmbedded());
+    }
+
+    public function testIsShopifyEmbeddedCanBeDisabled(): void
+    {
+        $this->app['config']->set('shopify-app.shopify_embedded', false);
+
+        $this->assertFalse(Util::isShopifyEmbedded());
+    }
+
     public function testHasAppLegacySupport(): void
     {
         $supportedFeatures = $this->app['config']->get('shopify-app.app_legacy_supports', []);

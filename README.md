@@ -49,9 +49,28 @@ For more information, tutorials, etc., please view the project's [wiki](../../wi
 
 For full resources on this package, see the [wiki](../..//wiki).
 
+### Non-embedded apps
+
+To run the app outside the Shopify Admin iframe (same approach as the older `laravel-shopify` package):
+
+1. In the Partner Dashboard, disable **Embedded app**.
+2. In `.env`:
+
+```env
+SHOPIFY_APPBRIDGE_ENABLED=false
+SHOPIFY_EMBEDDED=false
+SHOPIFY_FRONTEND_TYPE=MPA
+# Optional: "/" redirects here with shop + host (empty to disable)
+SHOPIFY_NON_EMBEDDED_HOME_REDIRECT=/dashboard
+# Optional: prefix home redirect with a shop slug
+SHOPIFY_TENANT=false
+```
+
+With App Bridge disabled, `verify.shopify` uses Laravel session auth after OAuth (guards, host check on browser loads) instead of requiring a session JWT on every request. `IframeProtection` also skips CSP `frame-ancestors` when `SHOPIFY_EMBEDDED=false`.
+
 ### Request authentication
 
-Routes protected by `verify.shopify` require a valid Shopify session token in both SPA and MPA applications. Send it in `Authorization: Bearer <token>` or the `token` input. A store name, installed-store record, or Laravel session cookie alone does not authenticate a protected action.
+When `SHOPIFY_APPBRIDGE_ENABLED` is `true` (default), routes protected by `verify.shopify` require a valid Shopify session token in both SPA and MPA applications. Send it in `Authorization: Bearer <token>` or the `token` input. A store name, installed-store record, or Laravel session cookie alone does not authenticate a protected action.
 
 The token determines the authenticated store. Any supplied `shop`, `shopDomain`, or `X-Shop-Domain` must identify that same store, including values in query parameters, form or JSON bodies, route parameters, and referer query parameters. Conflicting values return HTTP 403 before the controller runs. Controllers should use `$request->user()` to select their store; application-specific store IDs and resource IDs still need ownership checks.
 

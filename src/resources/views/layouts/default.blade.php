@@ -3,8 +3,10 @@
     <head>
         <meta charset="utf-8">
         <meta name="csrf-token" content="{{ csrf_token() }}">
-        <meta name="shopify-api-key" content="{{ \Osiset\ShopifyApp\Util::getShopifyConfig('api_key', $shopDomain ?? Auth::user()->name ) }}"/>
-        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+        @if(\Osiset\ShopifyApp\Util::isAppBridgeEnabled())
+            <meta name="shopify-api-key" content="{{ \Osiset\ShopifyApp\Util::getShopifyConfig('api_key', $shopDomain ?? Auth::user()->name ) }}"/>
+            <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+        @endif
 
         <title>{{ config('shopify-app.app_name') }}</title>
         @yield('styles')
@@ -19,7 +21,7 @@
             </div>
         </div>
 
-        @if(\Osiset\ShopifyApp\Util::isMPAApplication())
+        @if(\Osiset\ShopifyApp\Util::isAppBridgeEnabled() && \Osiset\ShopifyApp\Util::isMPAApplication())
             @include('shopify-app::partials.token_handler')
         @endif
         @yield('scripts')

@@ -140,6 +140,42 @@ class AuthControllerTest extends TestCase
         $response->assertSee('shopify.idToken()', false);
     }
 
+    public function testTokenRedirectsDirectlyWhenAppBridgeDisabled(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+
+        $response = $this->call('get', '/authenticate/token', [
+            'shop' => 'example.myshopify.com',
+            'target' => '/orders',
+            'host' => 'ZXhhbXBsZS5teXNob3BpZnkuY29t',
+        ]);
+
+        $response->assertRedirect();
+        $location = $response->headers->get('Location');
+        $this->assertNotNull($location);
+        $this->assertStringContainsString('/orders', $location);
+        $this->assertStringContainsString('shop=example.myshopify.com', $location);
+    }
+
+    public function testAuthLogsInShopWhenAppBridgeDisabled(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+        ApiStub::stubResponses(['access_token_grant']);
+
+        $hmac = '6f16da24e8185e717f22a3373a1928fcaea7ea2401be40ab0d160f5bed7fe55a';
+        $hmacParams = [
+            'hmac' => $hmac,
+            'shop' => 'example.myshopify.com',
+            'code' => '1234678',
+            'timestamp' => '1337178173',
+        ];
+
+        $response = $this->call('get', '/authenticate', $hmacParams);
+        $response->assertRedirect();
+        $this->assertTrue(auth()->check());
+        $this->assertSame('example.myshopify.com', auth()->user()->name);
+    }
+
     public function testTokenLoadingStateCanBeOverriddenWithoutTheScript(): void
     {
         // Mimic an app override in resources/views/vendor/shopify-app.

@@ -87,4 +87,20 @@ class IframeProtectionTest extends TestCase
         $this->assertNotEmpty($currentHeader);
         $this->assertEquals($expectedHeader, $currentHeader);
     }
+
+    public function testIframeProtectionSkippedWhenNotEmbedded(): void
+    {
+        $this->app['config']->set('shopify-app.shopify_embedded', false);
+
+        $request = new Request();
+        $shopQuery = new ShopQuery();
+        $next = function () {
+            return new Response('Test Response');
+        };
+
+        $middleware = new IframeProtection($shopQuery);
+        $response = $middleware->handle($request, $next);
+
+        $this->assertNull($response->headers->get('content-security-policy'));
+    }
 }

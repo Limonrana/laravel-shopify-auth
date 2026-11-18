@@ -3,8 +3,10 @@
     <head>
         <meta charset="utf-8">
         <base target="_top">
-        <meta name="shopify-api-key" content="{{ config('shopify-app.api_key') }}" />
-        <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+        @if(\Osiset\ShopifyApp\Util::isAppBridgeEnabled())
+            <meta name="shopify-api-key" content="{{ config('shopify-app.api_key') }}" />
+            <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
+        @endif
 
         <title>Redirecting...</title>
 

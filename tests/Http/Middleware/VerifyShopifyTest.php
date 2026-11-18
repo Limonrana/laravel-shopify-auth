@@ -513,4 +513,141 @@ class VerifyShopifyTest extends TestCase
 
         $this->runMiddleware(VerifyShopify::class, $newRequest);
     }
+
+    public function testSessionAuthWhenAppBridgeDisabledWithShopQuery(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+        $this->app['config']->set('shopify-app.non_embedded_home_redirect', null);
+
+        $shop = factory($this->model)->create(['name' => 'shop-name.myshopify.com']);
+        $host = \Osiset\ShopifyApp\Util::base64UrlEncode('admin.shopify.com/store/shop-name');
+
+        $currentRequest = Request::instance();
+        $newRequest = $currentRequest->duplicate(
+            ['shop' => $shop->name, 'host' => $host],
+            null,
+            null,
+            null,
+            null,
+            ['REQUEST_URI' => '/orders']
+        );
+
+        $result = $this->runMiddleware(VerifyShopify::class, $newRequest);
+        $this->assertTrue($result[0]);
+        $this->assertTrue(auth()->check());
+        $this->assertSame($shop->name, auth()->user()->name);
+    }
+
+    public function testSessionAuthWhenAppBridgeDisabledWithExistingAuth(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+        $this->app['config']->set('shopify-app.non_embedded_home_redirect', null);
+
+        $shop = factory($this->model)->create(['name' => 'shop-name.myshopify.com']);
+        auth()->login($shop);
+
+        $currentRequest = Request::instance();
+        $newRequest = $currentRequest->duplicate(
+            [],
+            null,
+            null,
+            null,
+            null,
+            ['REQUEST_URI' => '/orders']
+        );
+        $newRequest->setUserResolver(fn () => $shop);
+
+        $result = $this->runMiddleware(VerifyShopify::class, $newRequest);
+        $this->assertTrue($result[0]);
+    }
+
+    public function testSessionAuthWhenAppBridgeDisabledRequiresHost(): void
+    {
+        $this->expectException(SignatureVerificationException::class);
+        $this->expectExceptionMessage('Host not found!');
+
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+
+        $shop = factory($this->model)->create(['name' => 'shop-name.myshopify.com']);
+
+        $currentRequest = Request::instance();
+        $newRequest = $currentRequest->duplicate(
+            ['shop' => $shop->name],
+            null,
+            null,
+            null,
+            null,
+            ['REQUEST_URI' => '/orders']
+        );
+
+        $this->runMiddleware(VerifyShopify::class, $newRequest);
+    }
+
+    public function testSessionAuthWhenAppBridgeDisabledRedirectsUninstalledShop(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+
+        $currentRequest = Request::instance();
+        $newRequest = $currentRequest->duplicate(
+            ['shop' => 'missing-shop.myshopify.com']
+        );
+
+        $result = $this->runMiddleware(VerifyShopify::class, $newRequest);
+        $this->assertFalse($result[0]);
+        $this->assertSame(302, $result[1]->getStatusCode());
+    }
+
+    public function testSessionAuthWhenAppBridgeDisabledRedirectsRootToDashboard(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+        $this->app['config']->set('shopify-app.non_embedded_home_redirect', '/dashboard');
+
+        $shop = factory($this->model)->create(['name' => 'shop-name.myshopify.com']);
+        auth()->login($shop);
+
+        $currentRequest = Request::instance();
+        $newRequest = $currentRequest->duplicate(
+            [],
+            null,
+            null,
+            null,
+            null,
+            ['REQUEST_URI' => '/', 'REQUEST_PATH' => '/']
+        );
+        $newRequest->setUserResolver(fn () => $shop);
+
+        $result = $this->runMiddleware(VerifyShopify::class, $newRequest);
+        $this->assertFalse($result[0]);
+        $this->assertSame(302, $result[1]->getStatusCode());
+        $location = $result[1]->headers->get('Location');
+        $this->assertStringContainsString('/dashboard?', $location);
+        $this->assertStringContainsString('shop=shop-name.myshopify.com', $location);
+        $this->assertStringContainsString('host=', $location);
+    }
+
+    public function testSessionAuthWhenAppBridgeDisabledTenantHomeRedirect(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+        $this->app['config']->set('shopify-app.non_embedded_home_redirect', '/dashboard');
+        $this->app['config']->set('shopify-app.shopify_tenant', true);
+
+        $shop = factory($this->model)->create(['name' => 'shop-name.myshopify.com']);
+        auth()->login($shop);
+
+        $currentRequest = Request::instance();
+        $newRequest = $currentRequest->duplicate(
+            [],
+            null,
+            null,
+            null,
+            null,
+            ['REQUEST_URI' => '/', 'REQUEST_PATH' => '/']
+        );
+        $newRequest->setUserResolver(fn () => $shop);
+
+        $result = $this->runMiddleware(VerifyShopify::class, $newRequest);
+        $this->assertFalse($result[0]);
+        $location = $result[1]->headers->get('Location');
+        $this->assertStringContainsString('/shop-name/dashboard?', $location);
+    }
 }

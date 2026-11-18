@@ -163,12 +163,28 @@ trait BillingController
     }
 
     /**
-     * Billing actions must use the store established by session-token authentication.
+     * Billing actions must use the authenticated store.
+     *
+     * App Bridge apps require a valid session-token context. Non-embedded apps
+     * (appbridge_enabled=false) use Laravel session auth established by
+     * VerifyShopify::handleWithoutAppBridge from the shop query on return URLs.
      */
     protected function authenticatedBillingShop(Request $request): ShopModel
     {
         $shop = $request->user();
-        if (!$shop instanceof ShopModel || !$shop->getSessionContext()?->isValid()) {
+        if (!$shop instanceof ShopModel) {
+            throw new HttpException('A valid shop session is required.', Response::HTTP_FORBIDDEN);
+        }
+
+        if (Util::isAppBridgeEnabled()) {
+            if (!$shop->getSessionContext()?->isValid()) {
+                throw new HttpException('A valid shop session is required.', Response::HTTP_FORBIDDEN);
+            }
+
+            return $shop;
+        }
+
+        if ($shop->getAccessToken()->isEmpty()) {
             throw new HttpException('A valid shop session is required.', Response::HTTP_FORBIDDEN);
         }
 

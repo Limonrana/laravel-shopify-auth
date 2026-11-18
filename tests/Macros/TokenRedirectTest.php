@@ -31,4 +31,26 @@ class TokenRedirectTest extends TestCase
             $location
         );
     }
+
+    public function testTokenRedirectSkipsTokenRouteWhenAppBridgeDisabled(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+
+        $currentRequest = Request::instance();
+        $host = base64_encode('example.myshopify.com');
+        $newRequest = $currentRequest->duplicate([
+            'shop' => 'example.myshopify.com',
+            'host' => $host,
+        ]);
+        Request::swap($newRequest);
+
+        $response = Redirector::tokenRedirect('home');
+        $location = $response->headers->get('location');
+
+        $this->assertSame(
+            'http://localhost?shop=example.myshopify.com&host=ZXhhbXBsZS5teXNob3BpZnkuY29t',
+            $location
+        );
+        $this->assertStringNotContainsString('/authenticate/token', $location);
+    }
 }

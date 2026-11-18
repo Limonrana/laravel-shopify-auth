@@ -139,6 +139,48 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | AppBridge Mode
+    |--------------------------------------------------------------------------
+    |
+    | App Bridge (session tokens) is enabled by default for embedded apps.
+    | Set to false for non-embedded / legacy mode: Laravel session auth after
+    | OAuth, no App Bridge token handoff. Also disable "Embedded app" in the
+    | Partner Dashboard and set shopify_embedded to false.
+    |
+    */
+
+    'appbridge_enabled' => filter_var(env('SHOPIFY_APPBRIDGE_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Shopify Embedded
+    |--------------------------------------------------------------------------
+    |
+    | When true (default), IframeProtection sets CSP frame-ancestors for Admin.
+    | Set to false for non-embedded apps that open outside the Admin iframe.
+    |
+    */
+
+    'shopify_embedded' => filter_var(env('SHOPIFY_EMBEDDED', true), FILTER_VALIDATE_BOOLEAN),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Non-embedded home redirect
+    |--------------------------------------------------------------------------
+    |
+    | When App Bridge is disabled, browser hits to "/" can redirect into your
+    | app home (default "/dashboard") with shop + host query params. Set to
+    | empty / null to disable. With shopify_tenant=true the path is prefixed
+    | by a slug of the shop domain (e.g. "/example-myshopify-com/dashboard").
+    |
+    */
+
+    'non_embedded_home_redirect' => env('SHOPIFY_NON_EMBEDDED_HOME_REDIRECT', '/dashboard'),
+
+    'shopify_tenant' => filter_var(env('SHOPIFY_TENANT', false), FILTER_VALIDATE_BOOLEAN),
+
+    /*
+    |--------------------------------------------------------------------------
     | Shopify App Name
     |--------------------------------------------------------------------------
     |

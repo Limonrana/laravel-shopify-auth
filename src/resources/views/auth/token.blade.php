@@ -11,6 +11,21 @@
 @section('scripts')
     @parent
         <script>
+            @if(!\Osiset\ShopifyApp\Util::isAppBridgeEnabled())
+                (function () {
+                    let url = new URL(@json($target), window.location.origin);
+
+                    if (url.origin !== window.location.origin) {
+                        url = new URL(@json($fallbackTarget), window.location.origin);
+                    }
+
+                    if (window.location.protocol === 'https:') {
+                        url.protocol = 'https:';
+                    }
+
+                    open(url.toString(), "_self");
+                })();
+            @else
                 // If no host is found, we need to throw an error
                 const host = new URLSearchParams(location.search).get("host");
                 if (!host) {
@@ -41,5 +56,6 @@
                     open(url.toString(), "_self");
                     history.pushState(null, '', url.toString());
                 });
+            @endif
         </script>
 @endsection

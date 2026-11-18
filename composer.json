@@ -1,5 +1,5 @@
 {
-    "name": "kyon147/laravel-shopify",
+    "name": "limonrana/laravel-shopify",
     "description": "Shopify package for Laravel to aide in app development",
     "license": "MIT",
     "keywords": [
@@ -36,7 +36,7 @@
         "funeralzone/valueobjects": "^0.5",
         "gnikyt/basic-shopify-api": "^9.0 || ^10.0 || ^11.0",
         "jenssegers/agent": "^2.6",
-        "laravel/framework": "^12.0 || ^13.0"
+        "laravel/framework": "^11.0 || ^12.0 || ^13.0"
     },
     "require-dev": {
         "ergebnis/composer-normalize": "^2.8",

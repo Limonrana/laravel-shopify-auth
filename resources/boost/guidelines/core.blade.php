@@ -1,6 +1,6 @@
 ## kyon147/laravel-shopify (host app)
 
-- This Composer package adds **Shopify embedded / custom app** support to **your** Laravel app: OAuth, session handling, billing helpers, webhooks, and related tooling. After install: `php artisan vendor:publish --tag=shopify-config`, set documented `SHOPIFY_*` keys in `.env`, run migrations, and wire **your** shop/user model to the package contract + trait.
+- This Composer package adds **Shopify embedded / custom / non-embedded app** support to **your** Laravel app: OAuth, session handling, billing helpers, webhooks, and related tooling. After install: `php artisan vendor:publish --tag=shopify-config`, set documented `SHOPIFY_*` keys in `.env`, run migrations, and wire **your** shop/user model to the package contract + trait. For non-embedded apps set `SHOPIFY_APPBRIDGE_ENABLED=false` and `SHOPIFY_EMBEDDED=false` (and disable Embedded app in Partners).
 - **Agents:** use **published** `config/shopify-app.php` and documented env keys only. Do not weaken HMAC, session token, or webhook verification in app code to “fix” auth.
 - **Where to work:** **your** `.env`, `config/shopify-app.php`, `routes/*.php`, models, and middleware registration. Package source under `vendor/kyon147/laravel-shopify` is **read-only reference** (e.g. default routes in `src/resources/routes/`, middleware in `src/Http/`).
 

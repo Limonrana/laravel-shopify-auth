@@ -28,4 +28,20 @@ class TokenRouteTest extends TestCase
             $result
         );
     }
+
+    public function testTokenRouteSkipsTokenBootstrapWhenAppBridgeDisabled(): void
+    {
+        $this->app['config']->set('shopify-app.appbridge_enabled', false);
+
+        $currentRequest = Request::instance();
+        $newRequest = $currentRequest->duplicate([
+            'shop' => 'example.myshopify.com',
+        ]);
+        Request::swap($newRequest);
+
+        $result = UrlGenerator::tokenRoute('home');
+
+        $this->assertSame('http://localhost?shop=example.myshopify.com', $result);
+        $this->assertStringNotContainsString('/authenticate/token', $result);
+    }
 }

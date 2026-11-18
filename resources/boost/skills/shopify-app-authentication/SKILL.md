@@ -38,8 +38,26 @@ Example (conceptual): wrap **your** app routes in a group using `middleware(['ve
 - SPA / session token: package views under `src/resources/views/auth/` — use or replace in **your** app as documented, not by patching the package.
 - Token page loading state: to restyle what merchants see while `/authenticate/token` fetches a session token, override `partials/token_loading.blade.php` (markup) and `partials/token_loading_styles.blade.php` (head) under **your** `resources/views/vendor/shopify-app/`. Keep the package's `auth/token.blade.php`: its script performs the session-token handoff.
 
+## Non-embedded apps
+
+For apps that open outside the Admin iframe (Partner Dashboard: Embedded app = off):
+
+```env
+SHOPIFY_APPBRIDGE_ENABLED=false
+SHOPIFY_EMBEDDED=false
+SHOPIFY_FRONTEND_TYPE=MPA
+SHOPIFY_NON_EMBEDDED_HOME_REDIRECT=/dashboard
+SHOPIFY_TENANT=false
+```
+
+- `SHOPIFY_APPBRIDGE_ENABLED=false` → Laravel session auth after OAuth (optional guards, `host` check on browser loads); no App Bridge token handoff.
+- `SHOPIFY_EMBEDDED=false` → `IframeProtection` skips CSP `frame-ancestors`.
+- `SHOPIFY_NON_EMBEDDED_HOME_REDIRECT` → when set, browser `/` redirects there with `shop` + `host` (set empty to disable). `SHOPIFY_TENANT=true` prefixes with a shop slug.
+- Keep App Bridge enabled (default) for embedded Admin apps; session tokens remain required on `verify.shopify`.
+
 ## Do / Don’t
 
 - **Do** keep `APP_URL`, Shopify app URLs, and redirect URLs aligned with Partners dashboard settings.
 - **Do** use the published config keys the package defines; avoid inventing parallel “secret” env names.
 - **Don’t** disable HMAC verification, session checks, or related middleware in config or custom middleware to bypass errors.
+- **Don’t** leave App Bridge enabled while the Partner app is non-embedded (or the reverse) without aligning both.

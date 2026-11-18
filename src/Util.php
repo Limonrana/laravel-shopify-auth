@@ -248,6 +248,26 @@ class Util
         return !$frontendType->isSame(FrontendType::fromNative('SPA'));
     }
 
+    /**
+     * Whether App Bridge session-token auth is enabled.
+     *
+     * When false, the package uses Laravel session auth after OAuth (non-embedded).
+     */
+    public static function isAppBridgeEnabled(): bool
+    {
+        return (bool) self::getShopifyConfig('appbridge_enabled');
+    }
+
+    /**
+     * Whether the app is expected to run embedded in Shopify Admin.
+     *
+     * When false, IframeProtection skips CSP frame-ancestors.
+     */
+    public static function isShopifyEmbedded(): bool
+    {
+        return (bool) self::getShopifyConfig('shopify_embedded');
+    }
+
     public static function hasAppLegacySupport(string $feature): bool
     {
         $legacySupports = self::getShopifyConfig('app_legacy_supports') ?? [];

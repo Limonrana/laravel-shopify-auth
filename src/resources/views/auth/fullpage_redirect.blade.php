@@ -3,8 +3,8 @@
     <head>
         <meta charset="utf-8">
         <base target="_top">
-        <meta name="shopify-api-key" content="{{ \Osiset\ShopifyApp\Util::getShopifyConfig('api_key', $shopDomain ?? Auth::user()->name ) }}"/>
-        @if(request()->header('sec-fetch-dest') === 'iframe')
+        @if(\Osiset\ShopifyApp\Util::isAppBridgeEnabled() && request()->header('sec-fetch-dest') === 'iframe')
+            <meta name="shopify-api-key" content="{{ \Osiset\ShopifyApp\Util::getShopifyConfig('api_key', $shopDomain ?? Auth::user()->name ) }}"/>
             <script src="https://cdn.shopify.com/shopifycloud/app-bridge.js"></script>
         @endif
 

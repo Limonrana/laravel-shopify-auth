@@ -45,6 +45,11 @@ class IframeProtection
     public function handle(Request $request, Closure $next)
     {
         $response = $next($request);
+
+        if (! Util::isShopifyEmbedded()) {
+            return $response;
+        }
+
         $ancestors = Util::getShopifyConfig('iframe_ancestors');
 
         $shop = Cache::remember(

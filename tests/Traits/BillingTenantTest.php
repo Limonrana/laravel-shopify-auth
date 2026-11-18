@@ -140,6 +140,28 @@ class BillingTenantTest extends TestCase
         $response->assertExactJson(['error' => 'A valid shop session is required.']);
     }
 
+    public function testNonEmbeddedBillingProcessAuthenticatesFromShopQuery(): void
+    {
+        BillingApi::install();
+        config(['shopify-app.appbridge_enabled' => false]);
+
+        $shop = factory($this->model)->create(['name' => 'shop-name.myshopify.com', 'plan_id' => null]);
+        $plan = factory(Util::getShopifyConfig('models.plan', Plan::class))->states('type_recurring')->create();
+        $host = Util::base64UrlEncode('admin.shopify.com/store/shop-name');
+        ($this->app->make(GetPlanUrl::class))($shop->getId(), NullablePlanId::fromNative($plan->id), $host);
+        BillingApi::approve($shop->name, 1001);
+
+        $response = $this->get('/billing/process/'.$plan->id.'?'.http_build_query([
+            'shop' => $shop->name,
+            'charge_id' => 1001,
+            'host' => $host,
+        ]));
+
+        $response->assertRedirect();
+        $this->assertSame($plan->id, (int) $shop->fresh()->plan_id);
+        $this->assertDatabaseCount('charges', 1);
+    }
+
     public function testBillingControllerSelectsStoreFromAuthenticatedSession(): void
     {
         $shop = factory($this->model)->create(['name' => 'shop-name.myshopify.com']);

@@ -5,6 +5,7 @@ namespace Osiset\ShopifyApp\Traits;
 use Illuminate\Contracts\View\View as ViewView;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\View;
 use Osiset\ShopifyApp\Actions\AuthenticateShop;
@@ -13,6 +14,8 @@ use Osiset\ShopifyApp\Exceptions\MissingShopDomainException;
 use Osiset\ShopifyApp\Exceptions\SignatureVerificationException;
 use Osiset\ShopifyApp\Messaging\Events\ShopAuthenticatedEvent;
 use Osiset\ShopifyApp\Objects\Values\ShopDomain;
+use Osiset\ShopifyApp\Objects\Values\ShopId;
+use Osiset\ShopifyApp\Storage\Queries\Shop as ShopQuery;
 use Osiset\ShopifyApp\Util;
 
 /**
@@ -71,14 +74,28 @@ trait AuthController
                 ]
             );
         } else {
+            // Non-embedded: establish Laravel session so verify.shopify can skip JWT.
+            if (! Util::isAppBridgeEnabled() && isset($result['shop_id'])) {
+                $shopId = $result['shop_id'] instanceof ShopId
+                    ? $result['shop_id']
+                    : ShopId::fromNative($result['shop_id']);
+                $shop = app(ShopQuery::class)->getById($shopId, [], true);
+                if ($shop && $shop->password && ! $shop->trashed()) {
+                    if (($guard = Util::getShopifyConfig('shop_auth_guard'))) {
+                        Auth::setDefaultDriver($guard);
+                    }
+                    Auth::login($shop);
+                }
+            }
+
             // Go to home route
             return Redirect::route(
                 Util::getShopifyConfig('route_names.home'),
-                [
+                array_filter([
                     'shop' => $shopDomain->toNative(),
                     'host' => $request->get('host'),
                     'locale' => $request->get('locale'),
-                ]
+                ], static fn ($value) => $value !== null && $value !== '')
             );
         }
     }
@@ -86,7 +103,7 @@ trait AuthController
     /**
      * Get session token for a shop.
      *
-     * @return ViewView
+     * @return ViewView|RedirectResponse
      */
     public function token(Request $request)
     {
@@ -99,13 +116,20 @@ trait AuthController
         );
 
         $fallbackPath = parse_url(route(Util::getShopifyConfig('route_names.home'), [], false), PHP_URL_PATH) ?: '/';
+        $cleanTarget = $this->buildCleanTokenTarget($request, $shopDomain, $target);
+        $fallbackTarget = $this->buildCleanTokenTarget($request, $shopDomain, $fallbackPath);
+
+        // Non-embedded: skip App Bridge token page and go straight to the target.
+        if (! Util::isAppBridgeEnabled()) {
+            return Redirect::to($cleanTarget ?: $fallbackTarget);
+        }
 
         return View::make(
             'shopify-app::auth.token',
             [
                 'shopDomain' => $shopDomain->toNative(),
-                'target' => $this->buildCleanTokenTarget($request, $shopDomain, $target),
-                'fallbackTarget' => $this->buildCleanTokenTarget($request, $shopDomain, $fallbackPath),
+                'target' => $cleanTarget,
+                'fallbackTarget' => $fallbackTarget,
             ]
         );
     }

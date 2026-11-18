@@ -83,13 +83,19 @@ class VerifyShopify
      *
      * @param Request $request The request object.
      * @param Closure $next    The next action.
+     * @param mixed   ...$guards Optional auth guards (non-embedded session path).
      *
      * @throws SignatureVerificationException|HttpException If HMAC verification fails.
      *
      * @return mixed
      */
-    public function handle(Request $request, Closure $next)
+    public function handle(Request $request, Closure $next, ...$guards)
     {
+        // Non-embedded / legacy: Laravel session auth after OAuth (no App Bridge JWT).
+        if (! Util::isAppBridgeEnabled()) {
+            return $this->handleWithoutAppBridge($request, $next, $guards);
+        }
+
         // Verify the HMAC (if available)
         $hmacResult = $this->verifyHmac($request);
 
@@ -155,6 +161,267 @@ class VerifyShopify
         }
 
         return $next($request);
+    }
+
+    /**
+     * Authenticate using Laravel session when App Bridge is disabled.
+     *
+     * Mirrors the legacy laravel-shopify non-embedded VerifyShopify flow:
+     * guards, optional HMAC, host check, and optional "/" home redirect.
+     *
+     * @param Request $request The request object.
+     * @param Closure $next    The next action.
+     * @param array   $guards  Optional auth guards.
+     *
+     * @return mixed
+     */
+    protected function handleWithoutAppBridge(Request $request, Closure $next, array $guards = [])
+    {
+        if ($request->user()) {
+            $this->previousShop = $request->user();
+        }
+
+        if ($this->auth->user() !== null && ! $this->previousShop) {
+            $this->previousShop = $this->auth->user();
+        }
+
+        // Auth entry points may run without a logged-in shop.
+        if ($this->isAuthRoute($request)) {
+            return $next($request);
+        }
+
+        // Billing return URLs (e.g. Shopify charge approval) include ?shop= but no
+        // App Bridge JWT. Authenticate from the shop query before the controller runs.
+        if ($this->isBillingRoute($request)) {
+            return $this->authenticateNonEmbeddedBillingShop($request, $next);
+        }
+
+        if (! $this->previousShop) {
+            if (! $this->checkPreviousInstallation($request)) {
+                return $this->handleInvalidShop($request);
+            }
+        }
+
+        $isNotApiRequest = ! $this->isApiRequest($request);
+
+        $isGuard = $this->authenticateGuards($guards);
+        if (! $isGuard) {
+            if ($isNotApiRequest) {
+                $hmacResult = $this->verifyHmac($request);
+                if ($hmacResult === false) {
+                    throw new SignatureVerificationException('HMAC null or Unable to verify signature.');
+                }
+            }
+
+            if ($this->previousShop === null) {
+                $this->previousShop = $this->getShopIfAlreadyInstalled($request);
+            }
+
+            if (! $this->previousShop || ! $this->loginFromShop($this->previousShop)) {
+                return $this->handleInvalidShop($request);
+            }
+
+            if ($isNotApiRequest) {
+                $isHost = $this->verifyHost($request);
+                if ($isHost === null) {
+                    throw new SignatureVerificationException('Host not found!', 400);
+                }
+                if ($isHost === false) {
+                    throw new SignatureVerificationException('Host Unable to verify signature.', 400);
+                }
+            }
+        }
+
+        if (
+            $this->previousShop instanceof ShopModel
+            && (
+                $this->previousShop->trashed()
+                || ! $this->previousShop->password
+                || $this->previousShop->hasCorruptExpiringTokenState()
+            )
+        ) {
+            return $this->handleInvalidShop($request);
+        }
+
+        if ($this->previousShop instanceof ShopModel) {
+            $this->bindShopToRequest($request, $this->previousShop->getDomain());
+        }
+
+        $homeRedirect = Util::getShopifyConfig('non_embedded_home_redirect');
+        if ($isNotApiRequest && $request->path() === '/' && filled($homeRedirect)) {
+            return $this->redirectToNonEmbeddedHome($homeRedirect);
+        }
+
+        return $next($request);
+    }
+
+    /**
+     * Whether the request targets authenticate entry points.
+     */
+    protected function isAuthRoute(Request $request): bool
+    {
+        if ($request->routeIs(
+            Util::getShopifyConfig('route_names.authenticate'),
+            Util::getShopifyConfig('route_names.authenticate.token'),
+        )) {
+            return true;
+        }
+
+        return Str::contains($request->getRequestUri(), '/authenticate');
+    }
+
+    /**
+     * Whether the request targets billing entry points.
+     */
+    protected function isBillingRoute(Request $request): bool
+    {
+        if ($request->routeIs(
+            Util::getShopifyConfig('route_names.billing'),
+            Util::getShopifyConfig('route_names.billing.process'),
+            Util::getShopifyConfig('route_names.billing.usage_charge'),
+        )) {
+            return true;
+        }
+
+        return Str::contains($request->getRequestUri(), '/billing');
+    }
+
+    /**
+     * Authenticate an installed shop for non-embedded billing callbacks.
+     *
+     * Shopify redirects the browser to /billing/process with shop + charge_id
+     * (and usually host) but no session token when App Bridge is disabled.
+     */
+    protected function authenticateNonEmbeddedBillingShop(Request $request, Closure $next)
+    {
+        $shop = $this->getShopIfAlreadyInstalled($request);
+        if (! $shop || ! $this->loginFromShop($shop)) {
+            return $this->handleInvalidShop($request);
+        }
+
+        if ($request->query('host')) {
+            $isHost = $this->verifyHost($request);
+            if ($isHost === false) {
+                throw new SignatureVerificationException('Host Unable to verify signature.', 400);
+            }
+        }
+
+        $this->bindShopToRequest($request, $shop->getDomain());
+
+        return $next($request);
+    }
+
+    /**
+     * Whether the request targets authenticate or billing entry points.
+     *
+     * @deprecated Prefer isAuthRoute() / isBillingRoute().
+     */
+    protected function isAuthOrBillingRoute(Request $request): bool
+    {
+        return $this->isAuthRoute($request) || $this->isBillingRoute($request);
+    }
+
+    /**
+     * Verify host query matches the authenticated shop (non-embedded browser loads).
+     *
+     * @return bool|null true valid, false mismatch, null missing
+     */
+    protected function verifyHost(Request $request): ?bool
+    {
+        $host = $request->query('host');
+        if (! isset($host) || ! is_string($host) || $host === '') {
+            return null;
+        }
+
+        if (! $this->previousShop instanceof ShopModel) {
+            return false;
+        }
+
+        $shopName = collect(explode('.myshopify.com', $this->previousShop->name))->first();
+        $validHost = Util::base64UrlEncode('admin.shopify.com/store/'.$shopName);
+
+        return $validHost === $host;
+    }
+
+    /**
+     * Determine if the user is logged in to any of the given guards.
+     *
+     * @param array $guards
+     */
+    protected function authenticateGuards(array $guards): bool
+    {
+        if (empty($guards)) {
+            $guards = [null];
+        }
+
+        foreach ($guards as $guard) {
+            if ($this->auth->guard($guard)->check()) {
+                $this->auth->shouldUse($guard);
+                if (! $this->previousShop) {
+                    $this->previousShop = $this->auth->guard($guard)->user();
+                }
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get shop model if there is an installed store record for the request.
+     */
+    protected function getShopIfAlreadyInstalled(Request $request): ?ShopModel
+    {
+        $domain = ShopDomain::fromRequest($request);
+        if ($domain->isNull()) {
+            return null;
+        }
+
+        $shop = $this->shopQuery->getByDomain($domain, [], true);
+
+        return $shop
+            && $shop->password
+            && ! $shop->trashed()
+            && ! $shop->hasCorruptExpiringTokenState()
+            ? $shop
+            : null;
+    }
+
+    /**
+     * Login an installed shop without a session token (non-embedded path).
+     */
+    protected function loginFromShop(ShopModel $shop): bool
+    {
+        if (($guard = Util::getShopifyConfig('shop_auth_guard'))) {
+            $this->auth->setDefaultDriver($guard);
+        }
+
+        $this->auth->login($shop);
+        $this->previousShop = $shop;
+
+        return true;
+    }
+
+    /**
+     * Redirect "/" to the configured non-embedded home path with shop + host.
+     */
+    protected function redirectToNonEmbeddedHome(string $homeRedirect): RedirectResponse
+    {
+        $shopDomain = $this->previousShop->name;
+        $shopName = collect(explode('.myshopify.com', $shopDomain))->first();
+        $host = Util::base64UrlEncode('admin.shopify.com/store/'.$shopName);
+
+        $path = '/'.ltrim($homeRedirect, '/');
+        if (Util::getShopifyConfig('shopify_tenant')) {
+            $shopUrl = Str::slug(Str::replace('.', '-', $shopName), '-');
+            $path = '/'.$shopUrl.'/'.ltrim($homeRedirect, '/');
+        }
+
+        return redirect($path.'?'.http_build_query([
+            'host' => $host,
+            'shop' => $shopDomain,
+        ]));
     }
 
     /**
@@ -631,8 +898,18 @@ class VerifyShopify
      */
     protected function checkPreviousInstallation(Request $request): bool
     {
-        $shop = $this->shopQuery->getByDomain(ShopDomain::fromRequest($request), [], true);
+        $domain = ShopDomain::fromRequest($request);
+        if ($domain->isNull()) {
+            return false;
+        }
 
-        return $shop && $shop->password && ! $shop->trashed() && ! $shop->hasCorruptExpiringTokenState();
+        $shop = $this->shopQuery->getByDomain($domain, [], true);
+        if ($shop && $shop->password && ! $shop->trashed() && ! $shop->hasCorruptExpiringTokenState()) {
+            $this->previousShop = $shop;
+
+            return true;
+        }
+
+        return false;
     }
 }
